@@ -752,18 +752,17 @@ fn register_player_interface(
                 Ok(playback_state.to_mpris().to_string())
             });
 
-        // let local_spirc = spirc.clone();
+        let local_spirc = spirc.clone();
         let local_state = current_state.clone();
         b.property("Shuffle")
-            .emits_changed_false()
-            .get(move |_, _| Ok(local_state.read()?.shuffle));
-        // TODO: re-enable, once setting shuffle via spirc works
-        // .set(move |_, _, value| {
-        //     local_spirc
-        //         .shuffle(value)
-        //         .map(|_| None)
-        //         .map_err(|err| dbus::MethodErr::failed(&err))
-        // });
+            .emits_changed_true()
+            .get(move |_, _| Ok(local_state.read()?.shuffle))
+            .set(move |_, _, value| {
+                local_spirc
+                    .shuffle(value)
+                    .map(|_| None)
+                    .map_err(|err| dbus::MethodErr::failed(&err))
+            });
 
         b.property("Rate").emits_changed_const().get(|_, _| Ok(1.0));
         b.property("MaximumRate")
