@@ -139,7 +139,7 @@ impl Position {
 #[derive(Clone, Copy, Debug)]
 enum RepeatState {
     None,
-    // Track,
+    Track,
     All,
 }
 
@@ -147,27 +147,8 @@ impl RepeatState {
     fn to_mpris(self) -> &'static str {
         match self {
             RepeatState::None => "None",
-            // RepeatState::Track => "Track",
+            RepeatState::Track => "Track",
             RepeatState::All => "Playlist",
-        }
-    }
-}
-
-impl From<RepeatState> for bool {
-    fn from(repeat: RepeatState) -> Self {
-        match repeat {
-            RepeatState::None => false,
-            RepeatState::All => true,
-        }
-    }
-}
-
-impl From<bool> for RepeatState {
-    fn from(repeat: bool) -> Self {
-        if repeat {
-            RepeatState::All
-        } else {
-            RepeatState::None
         }
     }
 }
@@ -272,14 +253,18 @@ impl CurrentStateInner {
                         self.shuffle = shuffle;
                         insert_attr(&mut changed, "Shuffle", self.shuffle);
                     }
-            PlayerEvent::RepeatChanged { context: _, track  } => {
-                        self.repeat = track.into();
-                        insert_attr(
-                            &mut changed,
-                            "LoopStatus",
-                            self.repeat.to_mpris().to_string(),
-                        )
-                    }
+            PlayerEvent::RepeatChanged { context, track } => {
+                self.repeat = match (context, track) {
+                    (true, true) => RepeatState::Track,
+                    (false, true) => RepeatState::All,
+                    (_, false) => RepeatState::None,
+                };
+                 insert_attr(
+                     &mut changed,
+                     "LoopStatus",
+                     self.repeat.to_mpris().to_string(),
+                 )
+             }
             PlayerEvent::PlayRequestIdChanged { play_request_id } => {
                         self.play_request_id = Some(play_request_id);
                     }
@@ -809,9 +794,10 @@ fn register_player_interface(
                 Ok(repeat.to_mpris().to_string())
             })
             .set(move |_, _, value| {
-                let new_repeat = match value.as_str() {
-                    "None" => false,
-                    "Playlist" => true,
+                let (new_repeat, new_repeat_track) = match value.as_str() {
+                    "None" => (false, false),
+                    "Playlist" => (true, false),
+                    "Track" => (true, true),
                     mode => {
                         return Err(dbus::MethodErr::failed(&format!(
                             "unsupported repeat mode: {mode}"
@@ -820,6 +806,9 @@ fn register_player_interface(
                 };
                 local_spirc
                     .repeat(new_repeat)
+                    .map_err(|e| MethodErr::failed(&e))?;
+                local_spirc
+                    .repeat_track(new_repeat_track)
                     .map_err(|e| MethodErr::failed(&e))?;
                 // TODO: remove, once librespot sends us updates here
                 Ok(Some(value))
